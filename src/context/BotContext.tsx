@@ -113,6 +113,36 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     loadParameters();
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      checkActiveBots();
+    }
+  }, [user]);
+
+  const checkActiveBots = async () => {
+    if (!user) return;
+
+    try {
+      const { data: activeWallets, error } = await walletService.supabase
+        .from('wallets')
+        .select('id, address')
+        .eq('user_id', user.id)
+        .eq('active', true);
+
+      if (error) throw error;
+
+      if (activeWallets && activeWallets.length > 0) {
+        setIsTrading(true);
+        addLog(`${activeWallets.length} wallet(s) are actively trading`, 'info');
+        simulateCycles();
+      } else {
+        setIsTrading(false);
+      }
+    } catch (error: any) {
+      console.error('Error checking active bots:', error);
+    }
+  };
+
   const addLog = (message: string, type: string = 'info') => {
     setLogs(prevLogs => {
       const newLogs = [
@@ -133,40 +163,62 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
   };
 
   const startBot = async () => {
+    if (!user) {
+      toast.error('Please login first');
+      addLog('Please login first', 'error');
+      return;
+    }
+
     try {
       if (!tradingParameters.selectedToken) {
         toast.error('Please select a trading pair first');
         addLog('Please select a trading pair first', 'error');
         return;
       }
-      
-      if (!botCredentials.privateKey || !botCredentials.walletAddress) {
-        toast.error('Please enter wallet credentials first');
-        addLog('Please enter wallet credentials first', 'error');
+
+      // Get all wallets from database
+      const { data: wallets, error } = await walletService.supabase
+        .from('wallets')
+        .select('id, address, encrypted_private_key')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      if (!wallets || wallets.length === 0) {
+        toast.error('No wallets found. Import or generate a wallet first.');
+        addLog('No wallets found. Import or generate a wallet first.', 'error');
         return;
       }
-      
-      const web3Instance = await initializeWeb3();
-      
-      try {
-        const account = web3Instance.eth.accounts.privateKeyToAccount(botCredentials.privateKey);
-        web3Instance.eth.accounts.wallet.add(account);
-        web3Instance.eth.defaultAccount = account.address;
-      } catch (error) {
-        toast.error('Invalid private key');
-        addLog('Invalid private key', 'error');
+
+      // Check if wallets have configuration
+      const { data: configs } = await walletService.supabase
+        .from('wallet_configurations')
+        .select('wallet_id')
+        .eq('user_id', user.id);
+
+      if (!configs || configs.length === 0) {
+        toast.warning('Please save trading parameters first');
+        addLog('Please save trading parameters first', 'warning');
         return;
       }
-      
+
+      // Activate all wallets
+      const { error: updateError } = await walletService.supabase
+        .from('wallets')
+        .update({ active: true })
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
       setIsTrading(true);
-      addLog(`Starting trading for wallet ${botCredentials.walletAddress}`, 'info');
-      toast.success('Bot started successfully');
-      
+      addLog(`Bot started for ${wallets.length} wallet(s)`, 'success');
+      toast.success(`Bot started for ${wallets.length} wallet(s)`);
+
       // Simulate cycle updates
       simulateCycles();
-      
+
     } catch (error: any) {
-      addLog(`Failed to initialize bot: ${error.message}`, 'error');
+      addLog(`Failed to start bot: ${error.message}`, 'error');
       toast.error('Failed to start bot');
     }
   };
@@ -195,12 +247,30 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     }, 5000);
   };
 
-  const stopBot = () => {
-    setIsTrading(false);
-    setCurrentCycle('Not running');
-    setNextCycle('Not running');
-    addLog('Bot stopped');
-    toast.info('Bot stopped');
+  const stopBot = async () => {
+    if (!user) {
+      toast.error('Please login first');
+      return;
+    }
+
+    try {
+      // Deactivate all wallets
+      const { error } = await walletService.supabase
+        .from('wallets')
+        .update({ active: false })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setIsTrading(false);
+      setCurrentCycle('Not running');
+      setNextCycle('Not running');
+      addLog('Bot stopped for all wallets', 'info');
+      toast.info('Bot stopped for all wallets');
+    } catch (error: any) {
+      addLog(`Failed to stop bot: ${error.message}`, 'error');
+      toast.error('Failed to stop bot');
+    }
   };
 
   const saveCredentials = async () => {
