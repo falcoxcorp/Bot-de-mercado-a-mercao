@@ -1,20 +1,103 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, Eye, EyeOff, Upload, Download, Play, Square } from 'lucide-react';
+import { Wallet, Eye, EyeOff, Upload, Download, Play, Square, Clock } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
 import { useModal } from '../context/ModalContext';
 import { useBot } from '../context/BotContext';
 import { TOKEN_PAIRS } from '../constants/networks';
 import { useWeb3 } from '../context/Web3Context';
+import { useAuth } from '../context/AuthContext';
+import { walletService } from '../services/walletService';
+
+interface WalletCountdown {
+  nextOperation: string;
+  timeRemaining: string;
+  operationsInfo: string;
+}
 
 const WalletManager: React.FC = () => {
   const { wallets, importWallet, exportWallets, togglePrivateKey, toggleWalletTrading, removeWallet, saveWalletName } = useWallet();
   const { openWithdrawModal, openWalletConfigModal } = useModal();
   const { addLog } = useBot();
   const { selectedNetwork } = useWeb3();
-  
+  const { user } = useAuth();
+
   const [importInput, setImportInput] = useState('');
-  
+  const [walletCountdowns, setWalletCountdowns] = useState<Map<string, WalletCountdown>>(new Map());
+
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds <= 0) return 'Ready now';
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+
+  const updateWalletCountdowns = async () => {
+    if (!user) return;
+
+    const newCountdowns = new Map<string, WalletCountdown>();
+
+    for (const [address, wallet] of wallets.entries()) {
+      if (!wallet.active) continue;
+
+      try {
+        const walletId = await walletService.getWalletIdByAddress(user.id, address);
+        if (!walletId) continue;
+
+        const strategy = await walletService.loadWalletStrategy(walletId);
+        const config = await walletService.loadWalletConfig(walletId);
+
+        if (strategy && config) {
+          const nextOp = strategy.currentCycle.operations[0];
+          const isBuy = nextOp === 'buy';
+
+          const intervalSeconds = isBuy
+            ? config.buyIntervalHours * 3600 + config.buyIntervalMinutes * 60 + config.buyIntervalSeconds
+            : config.sellIntervalHours * 3600 + config.sellIntervalMinutes * 60 + config.sellIntervalSeconds;
+
+          const lastOpTime = strategy.lastOperationTime
+            ? new Date(strategy.lastOperationTime).getTime()
+            : 0;
+
+          const now = Date.now();
+          const timeSinceLastOp = Math.floor((now - lastOpTime) / 1000);
+          const timeRemaining = Math.max(0, intervalSeconds - timeSinceLastOp);
+
+          newCountdowns.set(address, {
+            nextOperation: isBuy ? 'BUY' : 'SELL',
+            timeRemaining: formatTimeRemaining(timeRemaining),
+            operationsInfo: `${strategy.currentCycle.remainingBuys} buys, ${strategy.currentCycle.remainingSells} sells (${strategy.currentCycle.operationsLeft} ops left)`
+          });
+        }
+      } catch (error) {
+        console.error(`[WalletManager] Error updating countdown for ${address}:`, error);
+      }
+    }
+
+    setWalletCountdowns(newCountdowns);
+  };
+
+  useEffect(() => {
+    if (user && wallets.size > 0) {
+      updateWalletCountdowns();
+
+      const interval = setInterval(() => {
+        updateWalletCountdowns();
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [user, wallets]);
+
   const handleImport = async () => {
     try {
       await importWallet(importInput);
@@ -192,8 +275,39 @@ const WalletManager: React.FC = () => {
               
               {wallet.active && (
                 <div className="wallet-cycle-info mt-2 bg-slate-900 bg-opacity-50 rounded-lg p-3">
-                  <div><strong>Current Cycle:</strong> <span className="current-cycle">Running...</span></div>
-                  <div><strong>Next Cycle:</strong> <span className="next-cycle">Preparing...</span></div>
+                  {walletCountdowns.has(wallet.address) ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock size={16} className="text-indigo-400" />
+                        <strong className="text-gray-300">Next Operation:</strong>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 text-sm">
+                        <div className="flex items-center justify-between bg-slate-800 rounded p-2">
+                          <span className="text-gray-400">Type:</span>
+                          <span className={`font-bold ${walletCountdowns.get(wallet.address)?.nextOperation === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                            {walletCountdowns.get(wallet.address)?.nextOperation}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-800 rounded p-2">
+                          <span className="text-gray-400">Time Remaining:</span>
+                          <span className="font-mono text-white font-semibold">
+                            {walletCountdowns.get(wallet.address)?.timeRemaining}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-800 rounded p-2">
+                          <span className="text-gray-400">Cycle Status:</span>
+                          <span className="text-gray-300 text-xs">
+                            {walletCountdowns.get(wallet.address)?.operationsInfo}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div><strong>Current Cycle:</strong> <span className="current-cycle">Loading...</span></div>
+                      <div><strong>Next Cycle:</strong> <span className="next-cycle">Loading...</span></div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
