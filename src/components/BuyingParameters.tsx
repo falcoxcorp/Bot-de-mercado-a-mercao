@@ -16,7 +16,7 @@ const BuyingParameters: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.4 }}
     >
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+      <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
         <ArrowUpRight size={20} className="text-green-400" />
         Buying Parameters ({NETWORK_CONFIG[selectedNetwork].symbol})
       </h2>
