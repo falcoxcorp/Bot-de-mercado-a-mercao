@@ -2,7 +2,9 @@ const ENCRYPTION_KEY = 'FalcoX_Trading_Bot_2024_Secure_Key';
 
 export const encryptPrivateKey = (privateKey: string): string => {
   try {
-    const combined = privateKey + '::' + ENCRYPTION_KEY + '::' + Date.now();
+    // Remove 0x prefix if present to avoid duplication
+    const cleanKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+    const combined = cleanKey + '::' + ENCRYPTION_KEY + '::' + Date.now();
     return btoa(combined);
   } catch (error) {
     throw new Error('Failed to encrypt private key');
@@ -19,19 +21,31 @@ export const decryptPrivateKey = (encryptedKey: string): string => {
     const decoded = atob(encryptedKey);
     const parts = decoded.split('::');
 
+    let privateKey = '';
+
     // Check if it's the new format with encryption key
     if (parts.length >= 2 && parts[1] === ENCRYPTION_KEY) {
-      return parts[0];
+      privateKey = parts[0];
+    } else if (parts.length > 0) {
+      // If it's old format or plain text, just return the first part
+      privateKey = parts[0];
+    } else {
+      throw new Error('Invalid encryption format');
     }
 
-    // If it's old format or plain text, just return the first part
-    if (parts.length > 0) {
-      return parts[0];
+    // Ensure private key has 0x prefix
+    if (!privateKey.startsWith('0x')) {
+      privateKey = '0x' + privateKey;
     }
 
-    throw new Error('Invalid encryption format');
+    // Validate length (should be 66 characters with 0x prefix, or 64 without)
+    if (privateKey.length !== 66) {
+      throw new Error(`Invalid private key length: ${privateKey.length} (expected 66 with 0x prefix)`);
+    }
+
+    return privateKey;
   } catch (error: any) {
-    if (error.message === 'No private key found' || error.message === 'Invalid encryption format') {
+    if (error.message === 'No private key found' || error.message.includes('Invalid')) {
       throw error;
     }
     throw new Error('Failed to decrypt private key: ' + error.message);
