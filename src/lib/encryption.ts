@@ -1,15 +1,15 @@
-export const encryptPrivateKey = (privateKey: string, userPassword: string): string => {
-  const combined = privateKey + '::' + userPassword;
+export const encryptPrivateKey = (privateKey: string, userId: string): string => {
+  const combined = privateKey + '::' + userId;
   return btoa(combined);
 };
 
-export const decryptPrivateKey = (encryptedKey: string, userPassword: string): string => {
+export const decryptPrivateKey = (encryptedKey: string, userId: string): string => {
   try {
     const decoded = atob(encryptedKey);
-    const [privateKey, password] = decoded.split('::');
+    const [privateKey, storedUserId] = decoded.split('::');
 
-    if (password !== userPassword) {
-      throw new Error('Invalid password');
+    if (storedUserId !== userId) {
+      throw new Error('Invalid user');
     }
 
     return privateKey;

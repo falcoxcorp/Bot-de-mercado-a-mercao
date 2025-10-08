@@ -4,6 +4,9 @@ import { useWeb3 } from './Web3Context';
 import { useBot } from './BotContext';
 import { ERC20_ABI } from '../constants/abis';
 import Web3 from 'web3';
+import { useAuth } from './AuthContext';
+import { walletService } from '../services/walletService';
+import { encryptPrivateKey, decryptPrivateKey } from '../lib/encryption';
 
 interface WalletMetrics {
   totalBuys: number;
@@ -69,16 +72,16 @@ interface WalletContextType {
   walletStrategies: Map<string, WalletStrategy>;
   walletConfigs: Map<string, WalletConfig>;
   generateWallet: () => Wallet | null;
-  addWallet: (wallet: Wallet) => void;
-  removeWallet: (address: string) => void;
-  toggleWalletTrading: (address: string) => void;
+  addWallet: (wallet: Wallet) => Promise<void>;
+  removeWallet: (address: string) => Promise<void>;
+  toggleWalletTrading: (address: string) => Promise<void>;
   togglePrivateKey: (address: string) => void;
   importWallet: (input: string) => Promise<void>;
   updateWalletBalances: (address: string) => Promise<void>;
   generateWallets: (count: number) => Promise<void>;
-  saveWalletName: (address: string, name: string) => void;
+  saveWalletName: (address: string, name: string) => Promise<void>;
   getWalletConfig: (address: string) => WalletConfig;
-  saveWalletConfig: (address: string, config: WalletConfig) => void;
+  saveWalletConfig: (address: string, config: WalletConfig) => Promise<void>;
   exportWallets: () => void;
 }
 
@@ -87,14 +90,14 @@ export const WalletContext = createContext<WalletContextType>({
   walletStrategies: new Map(),
   walletConfigs: new Map(),
   generateWallet: () => null,
-  addWallet: () => {},
-  removeWallet: () => {},
-  toggleWalletTrading: () => {},
+  addWallet: async () => {},
+  removeWallet: async () => {},
+  toggleWalletTrading: async () => {},
   togglePrivateKey: () => {},
   importWallet: async () => {},
   updateWalletBalances: async () => {},
   generateWallets: async () => {},
-  saveWalletName: () => {},
+  saveWalletName: async () => {},
   getWalletConfig: () => ({
     minBuyAmount: 0.01,
     maxBuyAmount: 0.1,
@@ -108,15 +111,18 @@ export const WalletContext = createContext<WalletContextType>({
     sellIntervalHours: 0,
     sellIntervalMinutes: 1,
     sellIntervalSeconds: 0,
-    selectedToken: ''
+    selectedToken: '',
+    selectedNetwork: 'core',
+    selectedDex: ''
   }),
-  saveWalletConfig: () => {},
+  saveWalletConfig: async () => {},
   exportWallets: () => {}
 });
 
 export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { web3, initializeWeb3, getWalletBalances, executeBuyTrade, executeSellTrade } = useWeb3();
   const { addLog } = useBot();
+  const { user } = useAuth();
   
   const [wallets, setWallets] = useState<Map<string, Wallet>>(new Map());
   const [walletStrategies, setWalletStrategies] = useState<Map<string, WalletStrategy>>(new Map());
@@ -125,16 +131,13 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
 
   // Load saved wallets on component mount
   useEffect(() => {
-    loadWalletsFromLocalStorage();
-    startBalanceUpdateInterval();
-  }, []);
-
-  // Save wallets whenever they change
-  useEffect(() => {
-    if (wallets.size > 0) {
-      saveWalletsToLocalStorage();
+    if (user) {
+      loadWalletsFromDatabase();
+      startBalanceUpdateInterval();
     }
-  }, [wallets]);
+  }, [user]);
+
+  // Auto-save is now handled by individual operations
 
   const startBalanceUpdateInterval = () => {
     const interval = setInterval(async () => {
@@ -243,9 +246,20 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
           lastOperationTime.set(address, now);
           await updateWalletBalances(address);
           await updateCycleInfo(wallet, strategy);
-          
-          // Save updated metrics to localStorage
-          saveWalletsToLocalStorage();
+
+          // Save updated metrics and strategy to database
+          if (user) {
+            try {
+              await walletService.updateWalletMetrics(user.id, address, wallet.metrics);
+
+              const walletId = await walletService.getWalletIdByAddress(user.id, address);
+              if (walletId) {
+                await walletService.saveWalletStrategy(user.id, walletId, strategy);
+              }
+            } catch (error: any) {
+              console.error('Error saving metrics:', error);
+            }
+          }
 
         } catch (error: any) {
           console.error('Trading error:', error);
@@ -258,19 +272,30 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       console.error('Wallet trading error:', error);
       addLog(`Wallet ${address.substr(0, 8)}... trading error: ${error.message}`, 'error');
       wallet.active = false;
-      saveWalletsToLocalStorage();
+      if (user) {
+        try {
+          await walletService.toggleWalletActive(user.id, address, false);
+        } catch (err) {
+          console.error('Error updating wallet status:', err);
+        }
+      }
     }
   };
 
   const generateWallet = (): Wallet | null => {
     try {
+      if (!user) {
+        addLog('Please sign in to generate wallets', 'error');
+        return null;
+      }
+
       if (!web3) {
         initializeWeb3();
       }
-      
+
       const w3 = web3 || new Web3();
       const account = w3.eth.accounts.create();
-      
+
       const wallet = {
         address: account.address,
         privateKey: account.privateKey,
@@ -286,12 +311,6 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
         isImported: false
       };
 
-      // Save the generated wallet immediately
-      const savedWallets = localStorage.getItem('savedWallets');
-      const walletsData = savedWallets ? JSON.parse(savedWallets) : [];
-      walletsData.push(wallet);
-      localStorage.setItem('savedWallets', JSON.stringify(walletsData));
-      
       return wallet;
     } catch (error: any) {
       console.error('Error generating wallet:', error);
@@ -300,87 +319,121 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   };
 
-  const addWallet = (wallet: Wallet) => {
-    setWallets(prev => {
-      const newWallets = new Map(prev);
-      newWallets.set(wallet.address, wallet);
-      return newWallets;
-    });
-    
-    setWalletStrategies(prev => {
-      const newStrategies = new Map(prev);
-      newStrategies.set(wallet.address, generateStrategyWeights());
-      return newStrategies;
-    });
-    
-    if (!walletConfigs.has(wallet.address)) {
+  const addWallet = async (wallet: Wallet) => {
+    if (!user) {
+      addLog('Please sign in to add wallets', 'error');
+      return;
+    }
+
+    try {
+      const encryptedKey = wallet.privateKey ? encryptPrivateKey(wallet.privateKey, user.id) : null;
+      const walletToSave = { ...wallet, privateKey: encryptedKey };
+
+      await walletService.saveWallet(user.id, walletToSave);
+
+      setWallets(prev => {
+        const newWallets = new Map(prev);
+        newWallets.set(wallet.address, wallet);
+        return newWallets;
+      });
+
+      setWalletStrategies(prev => {
+        const newStrategies = new Map(prev);
+        newStrategies.set(wallet.address, generateStrategyWeights());
+        return newStrategies;
+      });
+
+      if (!walletConfigs.has(wallet.address)) {
+        setWalletConfigs(prev => {
+          const newConfigs = new Map(prev);
+          newConfigs.set(wallet.address, getDefaultConfig());
+          return newConfigs;
+        });
+      }
+
+      addLog(`Wallet ${wallet.address.substr(0, 8)}... saved to database`, 'success');
+    } catch (error: any) {
+      console.error('Error adding wallet:', error);
+      addLog('Failed to save wallet: ' + error.message, 'error');
+    }
+  };
+
+  const removeWallet = async (address: string) => {
+    if (!user) {
+      addLog('Please sign in to remove wallets', 'error');
+      return;
+    }
+
+    try {
+      await walletService.deleteWallet(user.id, address);
+
+      setWallets(prev => {
+        const newWallets = new Map(prev);
+        newWallets.delete(address);
+        return newWallets;
+      });
+
+      setWalletStrategies(prev => {
+        const newStrategies = new Map(prev);
+        newStrategies.delete(address);
+        return newStrategies;
+      });
+
       setWalletConfigs(prev => {
         const newConfigs = new Map(prev);
-        newConfigs.set(wallet.address, getDefaultConfig());
+        newConfigs.delete(address);
         return newConfigs;
       });
+
+      addLog(`Removed wallet ${address.substr(0, 8)}... from database`, 'success');
+    } catch (error: any) {
+      console.error('Error removing wallet:', error);
+      addLog('Failed to remove wallet: ' + error.message, 'error');
     }
-    
-    saveWalletsToLocalStorage();
   };
 
-  const removeWallet = (address: string) => {
-    setWallets(prev => {
-      const newWallets = new Map(prev);
-      newWallets.delete(address);
-      return newWallets;
-    });
-    
-    setWalletStrategies(prev => {
-      const newStrategies = new Map(prev);
-      newStrategies.delete(address);
-      return newStrategies;
-    });
-    
-    setWalletConfigs(prev => {
-      const newConfigs = new Map(prev);
-      newConfigs.delete(address);
-      return newConfigs;
-    });
-    
-    // Remove from localStorage
-    const savedWallets = localStorage.getItem('savedWallets');
-    if (savedWallets) {
-      const walletsData = JSON.parse(savedWallets);
-      const updatedWallets = walletsData.filter((w: Wallet) => w.address !== address);
-      localStorage.setItem('savedWallets', JSON.stringify(updatedWallets));
+  const toggleWalletTrading = async (address: string) => {
+    if (!user) {
+      addLog('Please sign in to toggle wallet trading', 'error');
+      return;
     }
-    
-    addLog(`Removed wallet ${address.substr(0, 8)}...`, 'success');
-  };
 
-  const toggleWalletTrading = (address: string) => {
+    const wallet = wallets.get(address);
+    if (!wallet) return;
+
+    const newActive = !wallet.active;
+
     setWallets(prev => {
       const newWallets = new Map(prev);
-      const wallet = newWallets.get(address);
-      
-      if (wallet) {
-        wallet.active = !wallet.active;
-        newWallets.set(address, wallet);
-        
-        if (wallet.active) {
+      const w = newWallets.get(address);
+
+      if (w) {
+        w.active = newActive;
+        newWallets.set(address, w);
+
+        if (w.active) {
           setWalletStrategies(prev => {
             const newStrategies = new Map(prev);
             newStrategies.set(address, generateStrategyWeights());
             return newStrategies;
           });
-          
+
           addLog(`Wallet ${address.substr(0, 8)}... trading enabled`, 'info');
           executeWalletTrading(address);
         } else {
           addLog(`Wallet ${address.substr(0, 8)}... trading disabled`, 'info');
         }
       }
-      
+
       return newWallets;
     });
-    
-    saveWalletsToLocalStorage();
+
+    try {
+      await walletService.toggleWalletActive(user.id, address, newActive);
+    } catch (error: any) {
+      console.error('Error updating wallet status:', error);
+      addLog('Failed to update wallet status: ' + error.message, 'error');
+    }
   };
 
   const togglePrivateKey = (address: string) => {
@@ -401,6 +454,12 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
   };
 
   const importWallet = async (input: string) => {
+    if (!user) {
+      addLog('Please sign in to import wallets', 'error');
+      toast.error('Please sign in to import wallets');
+      return;
+    }
+
     try {
       const trimmedInput = input.trim();
       if (!trimmedInput) {
@@ -434,7 +493,7 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
         try {
           const cleanPrivateKey = trimmedInput.replace(/\s+/g, '');
           const privateKey = cleanPrivateKey.startsWith('0x') ? cleanPrivateKey : '0x' + cleanPrivateKey;
-          
+
           const account = w3.eth.accounts.privateKeyToAccount(privateKey);
           wallet = {
             address: account.address,
@@ -462,15 +521,9 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
         return;
       }
 
-      // Save imported wallet to localStorage
-      const savedWallets = localStorage.getItem('savedWallets');
-      const walletsData = savedWallets ? JSON.parse(savedWallets) : [];
-      walletsData.push(wallet);
-      localStorage.setItem('savedWallets', JSON.stringify(walletsData));
-
-      addWallet(wallet);
+      await addWallet(wallet);
       await updateWalletBalances(wallet.address);
-      
+
       addLog('Wallet imported successfully', 'success');
       toast.success('Wallet imported successfully');
     } catch (error: any) {
@@ -484,33 +537,20 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     try {
       const wallet = wallets.get(address);
       if (!wallet) return;
-      
+
       const balances = await getWalletBalances(address);
-      
+
       setWallets(prev => {
         const newWallets = new Map(prev);
         const updatedWallet = newWallets.get(address);
-        
+
         if (updatedWallet) {
           updatedWallet.balances = balances;
           newWallets.set(address, updatedWallet);
         }
-        
+
         return newWallets;
       });
-
-      // Update balances in localStorage
-      const savedWallets = localStorage.getItem('savedWallets');
-      if (savedWallets) {
-        const walletsData = JSON.parse(savedWallets);
-        const updatedWallets = walletsData.map((w: Wallet) => {
-          if (w.address === address) {
-            return { ...w, balances };
-          }
-          return w;
-        });
-        localStorage.setItem('savedWallets', JSON.stringify(updatedWallets));
-      }
     } catch (error) {
       console.error(`Error updating balances for wallet ${address}:`, error);
     }
@@ -540,21 +580,35 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   };
 
-  const saveWalletName = (address: string, name: string) => {
-    setWallets(prev => {
-      const newWallets = new Map(prev);
-      const wallet = newWallets.get(address);
-      
-      if (wallet && name.trim()) {
-        wallet.name = name.trim();
-        newWallets.set(address, wallet);
-        addLog(`Wallet name updated to: ${wallet.name}`, 'success');
+  const saveWalletName = async (address: string, name: string) => {
+    if (!user) {
+      addLog('Please sign in to update wallet name', 'error');
+      return;
+    }
+
+    try {
+      setWallets(prev => {
+        const newWallets = new Map(prev);
+        const wallet = newWallets.get(address);
+
+        if (wallet && name.trim()) {
+          wallet.name = name.trim();
+          newWallets.set(address, wallet);
+          addLog(`Wallet name updated to: ${wallet.name}`, 'success');
+        }
+
+        return newWallets;
+      });
+
+      const wallet = wallets.get(address);
+      if (wallet) {
+        const encryptedKey = wallet.privateKey ? encryptPrivateKey(wallet.privateKey, user.id) : null;
+        await walletService.saveWallet(user.id, { ...wallet, name: name.trim(), privateKey: encryptedKey });
       }
-      
-      return newWallets;
-    });
-    
-    saveWalletsToLocalStorage();
+    } catch (error: any) {
+      console.error('Error saving wallet name:', error);
+      addLog('Failed to save wallet name: ' + error.message, 'error');
+    }
   };
 
   const getDefaultConfig = (): WalletConfig => {
@@ -571,7 +625,9 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       sellIntervalHours: 0,
       sellIntervalMinutes: 1,
       sellIntervalSeconds: 0,
-      selectedToken: ''
+      selectedToken: '',
+      selectedNetwork: 'core',
+      selectedDex: ''
     };
   };
 
@@ -588,15 +644,28 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     return config;
   };
 
-  const saveWalletConfig = (address: string, config: WalletConfig) => {
-    setWalletConfigs(prev => {
-      const newConfigs = new Map(prev);
-      newConfigs.set(address, config);
-      return newConfigs;
-    });
-    
-    saveWalletConfigsToLocalStorage();
-    addLog(`Configuration saved for wallet ${address.substr(0, 8)}...`, 'success');
+  const saveWalletConfig = async (address: string, config: WalletConfig) => {
+    if (!user) {
+      addLog('Please sign in to save configuration', 'error');
+      return;
+    }
+
+    try {
+      setWalletConfigs(prev => {
+        const newConfigs = new Map(prev);
+        newConfigs.set(address, config);
+        return newConfigs;
+      });
+
+      const walletId = await walletService.getWalletIdByAddress(user.id, address);
+      if (walletId) {
+        await walletService.saveWalletConfig(user.id, walletId, config);
+        addLog(`Configuration saved for wallet ${address.substr(0, 8)}...`, 'success');
+      }
+    } catch (error: any) {
+      console.error('Error saving wallet config:', error);
+      addLog('Failed to save configuration: ' + error.message, 'error');
+    }
   };
 
   const exportWallets = () => {
@@ -631,85 +700,65 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   };
 
-  const saveWalletsToLocalStorage = () => {
-    try {
-      const walletsData = Array.from(wallets.values()).map(wallet => ({
-        address: wallet.address,
-        privateKey: wallet.privateKey,
-        name: wallet.name,
-        metrics: wallet.metrics,
-        active: wallet.active,
-        showPrivateKey: wallet.showPrivateKey,
-        isImported: wallet.isImported || false,
-        balances: wallet.balances
-      }));
-      
-      localStorage.setItem('savedWallets', JSON.stringify(walletsData));
-    } catch (error) {
-      console.error('Error saving wallets:', error);
-      addLog('Error saving wallets to storage', 'error');
-    }
-  };
+  const loadWalletsFromDatabase = async () => {
+    if (!user) return;
 
-  const saveWalletConfigsToLocalStorage = () => {
     try {
-      const configsData: Record<string, WalletConfig> = {};
-      walletConfigs.forEach((value, key) => {
-        configsData[key] = value;
-      });
-      
-      localStorage.setItem('walletConfigs', JSON.stringify(configsData));
-    } catch (error) {
-      console.error('Error saving wallet configs:', error);
-      addLog('Error saving wallet configurations', 'error');
-    }
-  };
+      const walletsData = await walletService.loadUserWallets(user.id);
 
-  const loadWalletsFromLocalStorage = () => {
-    try {
-      const savedWallets = localStorage.getItem('savedWallets');
-      if (savedWallets) {
-        const walletsData = JSON.parse(savedWallets);
-        
-        const newWallets = new Map<string, Wallet>();
-        walletsData.forEach((walletData: any) => {
-          newWallets.set(walletData.address, {
-            ...walletData,
-            metrics: walletData.metrics || {
-              totalBuys: 0,
-              totalSells: 0,
-              totalVolume: 0,
-              errors: 0
-            },
-            active: false, // Always start with trading disabled
-            showPrivateKey: false
-          });
-        });
-        
-        setWallets(newWallets);
-        
-        const newStrategies = new Map<string, WalletStrategy>();
-        newWallets.forEach((_, address) => {
-          newStrategies.set(address, generateStrategyWeights());
-        });
-        
-        setWalletStrategies(newStrategies);
+      const newWallets = new Map<string, Wallet>();
+      const newStrategies = new Map<string, WalletStrategy>();
+      const newConfigs = new Map<string, WalletConfig>();
+
+      for (const walletData of walletsData) {
+        let decryptedPrivateKey: string | null = null;
+
+        if (walletData.privateKey) {
+          try {
+            decryptedPrivateKey = decryptPrivateKey(walletData.privateKey, user.id);
+          } catch (error) {
+            console.error('Error decrypting private key for wallet:', walletData.address);
+            decryptedPrivateKey = null;
+          }
+        }
+
+        const wallet: Wallet = {
+          address: walletData.address,
+          privateKey: decryptedPrivateKey,
+          name: walletData.name,
+          metrics: walletData.metrics,
+          active: false,
+          showPrivateKey: false,
+          isImported: walletData.isImported || false
+        };
+
+        newWallets.set(wallet.address, wallet);
+        newStrategies.set(wallet.address, generateStrategyWeights());
+
+        const walletId = await walletService.getWalletIdByAddress(user.id, wallet.address);
+        if (walletId) {
+          const config = await walletService.loadWalletConfig(walletId);
+          if (config) {
+            newConfigs.set(wallet.address, config);
+          } else {
+            newConfigs.set(wallet.address, getDefaultConfig());
+          }
+
+          const strategy = await walletService.loadWalletStrategy(walletId);
+          if (strategy) {
+            newStrategies.set(wallet.address, strategy);
+          }
+        }
       }
 
-      const savedConfigs = localStorage.getItem('walletConfigs');
-      if (savedConfigs) {
-        const configsData = JSON.parse(savedConfigs);
-        
-        const newConfigs = new Map<string, WalletConfig>();
-        Object.entries(configsData).forEach(([address, config]: [string, any]) => {
-          newConfigs.set(address, config);
-        });
-        
-        setWalletConfigs(newConfigs);
-      }
-    } catch (error) {
+      setWallets(newWallets);
+      setWalletStrategies(newStrategies);
+      setWalletConfigs(newConfigs);
+
+      addLog(`Loaded ${walletsData.length} wallets from database`, 'success');
+    } catch (error: any) {
       console.error('Error loading wallets:', error);
-      addLog('Error loading saved wallets', 'error');
+      addLog('Error loading wallets from database: ' + error.message, 'error');
     }
   };
 
