@@ -1,43 +1,5 @@
 # Troubleshooting Guide
 
-## Errores Comunes y Soluciones
-
-### 1. Error: "Failed to decrypt private key"
-
-**Causa**: Las wallets tienen claves privadas con formato antiguo o inválido.
-
-**Solución**:
-1. Elimina las wallets existentes
-2. Importa o genera nuevas wallets
-3. Las nuevas wallets usarán el formato de encriptación correcto
-
-**Nota**: La función de desencriptación ahora es compatible con formatos antiguos, pero si sigues viendo este error:
-- Verifica que la wallet tenga una clave privada válida
-- Re-importa la wallet con la clave privada original
-
-### 2. CORS Error: "Access to fetch at 'https://rpc.coredao.org/'"
-
-**Causa**: Error normal de CORS en desarrollo local.
-
-**Solución**:
-- **Este error es NORMAL en desarrollo**
-- Los RPC funcionan correctamente en producción
-- Si necesitas probar en desarrollo:
-  - Los Edge Functions no tienen problemas de CORS
-  - El trading real se ejecuta desde el Edge Function, no desde el navegador
-
-**No necesitas hacer nada**, el bot funcionará correctamente en producción.
-
-### 3. Warning: "Cannot update a component while rendering a different component"
-
-**Causa**: Llamadas a `addLog` durante el ciclo de render.
-
-**Solución**: Ya está arreglado en el código actual.
-- Todas las llamadas a `addLog` críticas ahora usan `setTimeout(() => addLog(...), 0)`
-- Esto asegura que los logs se agreguen después del render
-
----
-
 ## Error: "Failed to resolve import @supabase/supabase-js"
 
 ### Causa
