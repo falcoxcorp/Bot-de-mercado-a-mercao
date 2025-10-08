@@ -6,11 +6,11 @@ Bot de trading automatizado que funciona **24/7 en la nube**. Configura tus wall
 
 ## Características Principales
 
-### 🚀 Trading 24/7 en la Nube
+### 🚀 Trading Automatizado
+- **Auto-Executor Integrado**: Funciona mientras la app esté abierta
+- **CRON Externo (Opcional)**: Verdadero 24/7 sin navegador abierto
 - El bot se ejecuta en Supabase Edge Functions
-- **No necesitas mantener tu PC encendida**
-- **No necesitas mantener el navegador abierto**
-- Funciona indefinidamente hasta que lo desactives
+- Configuración inmediata - sin setup externo requerido
 
 ### 💼 Multi-Wallet Support
 - Gestiona múltiples wallets simultáneamente
@@ -30,6 +30,7 @@ Bot de trading automatizado que funciona **24/7 en la nube**. Configura tus wall
 - Aislamiento completo de datos por usuario
 
 ### 📊 Monitoreo en Tiempo Real
+- **Panel Auto-Executor**: Estado en vivo del ejecutor
 - Logs detallados de todas las operaciones
 - Historial completo de trades
 - Métricas por wallet

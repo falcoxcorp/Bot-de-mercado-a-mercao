@@ -17,6 +17,7 @@ import WithdrawModal from './components/modals/WithdrawModal';
 import WalletConfigModal from './components/modals/WalletConfigModal';
 import TermsModal from './components/modals/TermsModal';
 import AIAssistant from './components/AIAssistant';
+import { AutoExecutorStatus } from './components/AutoExecutorStatus';
 
 import { Web3Provider } from './context/Web3Context';
 import { BotProvider } from './context/BotContext';
@@ -89,6 +90,10 @@ const MainApp = () => {
                 </div>
 
                 <BotStatus />
+
+                <div className="mb-6">
+                  <AutoExecutorStatus />
+                </div>
 
                 <WalletManager />
 

@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useWeb3 } from './Web3Context';
+import { botExecutor } from '../services/botExecutor';
+import { useAuth } from './AuthContext';
 
 interface BotContextType {
   isTrading: boolean;
@@ -90,7 +92,8 @@ export const BotContext = createContext<BotContextType>({
 
 export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { web3, initializeWeb3 } = useWeb3();
-  
+  const { user } = useAuth();
+
   const [isTrading, setIsTrading] = useState(false);
   const [botStats, setBotStats] = useState({
     totalSwaps: 0,
@@ -109,6 +112,17 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
   useEffect(() => {
     loadParameters();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      addLog('Auto-executor started - Bot will run automatically for active wallets', 'success');
+      botExecutor.start();
+
+      return () => {
+        botExecutor.stop();
+      };
+    }
+  }, [user]);
 
   const addLog = (message: string, type: string = 'info') => {
     setLogs(prevLogs => {
