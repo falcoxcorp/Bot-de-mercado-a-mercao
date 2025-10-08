@@ -130,11 +130,27 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     if (user) {
       const interval = setInterval(() => {
         updateCycleInfo();
-      }, 5000);
+      }, 1000);
 
       return () => clearInterval(interval);
     }
   }, [user]);
+
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds <= 0) return 'Ready now';
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
 
   const updateCycleInfo = async () => {
     if (!user) {
@@ -156,22 +172,54 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
       let totalBuys = 0;
       let totalSells = 0;
       let totalOperations = 0;
+      let nextOperationInfo = '';
+      let closestTimeRemaining = Infinity;
 
       for (const wallet of activeWallets) {
         const walletId = await walletService.getWalletIdByAddress(user.id, wallet.address);
         if (walletId) {
           const strategy = await walletService.loadWalletStrategy(walletId);
-          if (strategy) {
+          const config = await walletService.loadWalletConfig(walletId);
+
+          if (strategy && config) {
             totalBuys += strategy.currentCycle.remainingBuys;
             totalSells += strategy.currentCycle.remainingSells;
             totalOperations += strategy.currentCycle.operationsLeft;
+
+            const nextOp = strategy.currentCycle.operations[0];
+            const isBuy = nextOp === 'buy';
+
+            const intervalSeconds = isBuy
+              ? config.buyIntervalHours * 3600 + config.buyIntervalMinutes * 60 + config.buyIntervalSeconds
+              : config.sellIntervalHours * 3600 + config.sellIntervalMinutes * 60 + config.sellIntervalSeconds;
+
+            if (strategy.currentCycle.operationsLeft > 0) {
+              const lastOpTime = strategy.lastOperationTime
+                ? new Date(strategy.lastOperationTime).getTime()
+                : 0;
+
+              const now = Date.now();
+              const timeSinceLastOp = Math.floor((now - lastOpTime) / 1000);
+              const timeRemaining = Math.max(0, intervalSeconds - timeSinceLastOp);
+
+              if (timeRemaining < closestTimeRemaining) {
+                closestTimeRemaining = timeRemaining;
+                const shortAddr = wallet.address.substring(0, 8);
+                nextOperationInfo = `Next: ${shortAddr}... will ${isBuy ? 'BUY' : 'SELL'} in ${formatTimeRemaining(timeRemaining)}`;
+              }
+            }
           }
         }
       }
 
       const activeCount = activeWallets.length;
       setCurrentCycle(`${activeCount} active wallet${activeCount > 1 ? 's' : ''} - Running...`);
-      setNextCycle(`Remaining: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops total)`);
+
+      if (nextOperationInfo) {
+        setNextCycle(`${nextOperationInfo} | Total: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops)`);
+      } else {
+        setNextCycle(`Total: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops)`);
+      }
     } catch (error) {
       console.error('[BotContext] Error updating cycle info:', error);
       setCurrentCycle('Error loading wallet info');
