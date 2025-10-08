@@ -133,11 +133,34 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   }, [user]);
 
+  // Update balances periodically
   useEffect(() => {
-    if (wallets.size > 0) {
-      startBalanceUpdateInterval();
-    }
-  }, [wallets]);
+    if (wallets.size === 0) return;
+
+    console.log('[WalletContext] Starting balance update interval for', wallets.size, 'wallet(s)');
+
+    // Update immediately
+    const updateAllBalances = async () => {
+      try {
+        const allWallets = Array.from(wallets.values());
+        for (const wallet of allWallets) {
+          await updateWalletBalances(wallet.address);
+        }
+      } catch (error) {
+        console.error('[WalletContext] Error updating balances:', error);
+      }
+    };
+
+    updateAllBalances();
+
+    // Then update every 30 seconds
+    const interval = setInterval(updateAllBalances, 30000);
+
+    return () => {
+      console.log('[WalletContext] Cleaning up balance update interval');
+      clearInterval(interval);
+    };
+  }, [wallets.size]);
 
   // Save wallets whenever they change
   useEffect(() => {
@@ -145,21 +168,6 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       saveWalletsToLocalStorage();
     }
   }, [wallets]);
-
-  const startBalanceUpdateInterval = () => {
-    const interval = setInterval(async () => {
-      try {
-        const activeWallets = Array.from(wallets.values()).filter(w => w.active);
-        for (const wallet of activeWallets) {
-          await updateWalletBalances(wallet.address);
-        }
-      } catch (error) {
-        console.error('Error in balance update interval:', error);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  };
 
   const executeWalletTrading = async (address: string) => {
     const wallet = wallets.get(address);
@@ -521,19 +529,34 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
   const updateWalletBalances = async (address: string) => {
     try {
       const wallet = wallets.get(address);
-      if (!wallet) return;
-      
+      if (!wallet) {
+        console.log(`[WalletContext] Wallet ${address} not found in map`);
+        return;
+      }
+
+      // Ensure web3 is initialized
+      if (!web3) {
+        console.log('[WalletContext] Web3 not initialized, initializing now...');
+        await initializeWeb3();
+      }
+
+      console.log(`[WalletContext] Fetching balances for ${address.substring(0, 8)}...`);
       const balances = await getWalletBalances(address);
-      
+
+      console.log(`[WalletContext] Balances fetched for ${address.substring(0, 8)}:`, {
+        native: balances.native,
+        tokens: balances.tokens.length
+      });
+
       setWallets(prev => {
         const newWallets = new Map(prev);
         const updatedWallet = newWallets.get(address);
-        
+
         if (updatedWallet) {
           updatedWallet.balances = balances;
           newWallets.set(address, updatedWallet);
         }
-        
+
         return newWallets;
       });
 
@@ -550,7 +573,7 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
         localStorage.setItem('savedWallets', JSON.stringify(updatedWallets));
       }
     } catch (error) {
-      console.error(`Error updating balances for wallet ${address}:`, error);
+      console.error(`[WalletContext] Error updating balances for wallet ${address}:`, error);
     }
   };
 
