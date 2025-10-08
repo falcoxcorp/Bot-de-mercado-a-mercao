@@ -11,15 +11,29 @@ export const encryptPrivateKey = (privateKey: string): string => {
 
 export const decryptPrivateKey = (encryptedKey: string): string => {
   try {
+    if (!encryptedKey || encryptedKey === 'null') {
+      throw new Error('No private key found');
+    }
+
+    // Try to decode
     const decoded = atob(encryptedKey);
     const parts = decoded.split('::');
 
-    if (parts.length < 2 || parts[1] !== ENCRYPTION_KEY) {
-      throw new Error('Invalid encryption key');
+    // Check if it's the new format with encryption key
+    if (parts.length >= 2 && parts[1] === ENCRYPTION_KEY) {
+      return parts[0];
     }
 
-    return parts[0];
-  } catch (error) {
-    throw new Error('Failed to decrypt private key');
+    // If it's old format or plain text, just return the first part
+    if (parts.length > 0) {
+      return parts[0];
+    }
+
+    throw new Error('Invalid encryption format');
+  } catch (error: any) {
+    if (error.message === 'No private key found' || error.message === 'Invalid encryption format') {
+      throw error;
+    }
+    throw new Error('Failed to decrypt private key: ' + error.message);
   }
 };

@@ -278,10 +278,10 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       if (!web3) {
         initializeWeb3();
       }
-      
+
       const w3 = web3 || new Web3();
       const account = w3.eth.accounts.create();
-      
+
       const encryptedPrivateKey = encryptPrivateKey(account.privateKey);
 
       const wallet = {
@@ -305,11 +305,13 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
           console.error('Error saving wallet to database:', err);
         });
       }
-      
+
       return wallet;
     } catch (error: any) {
       console.error('Error generating wallet:', error);
-      addLog('Failed to generate wallet: ' + error.message, 'error');
+      setTimeout(() => {
+        addLog('Failed to generate wallet: ' + error.message, 'error');
+      }, 0);
       return null;
     }
   };
@@ -714,10 +716,14 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       setWalletStrategies(newStrategies);
       setWalletConfigs(newConfigs);
 
-      addLog('Wallets loaded from database', 'success');
+      setTimeout(() => {
+        addLog('Wallets loaded from database', 'success');
+      }, 0);
     } catch (error) {
       console.error('Error loading wallets from database:', error);
-      addLog('Error loading wallets from database', 'error');
+      setTimeout(() => {
+        addLog('Error loading wallets from database', 'error');
+      }, 0);
     }
   };
 
