@@ -37,13 +37,13 @@ const BotStatus: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.6 }}
     >
-      <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
         <span className={`status-indicator ${isTrading ? 'status-active' : 'status-inactive'}`} />
         <Bot size={20} className="text-indigo-400" />
         Bot Status
       </h2>
       
-      <div className="mb-3 bg-slate-900 p-3 rounded-lg">
+      <div className="mb-4 bg-slate-900 p-4 rounded-lg">
         <div className="flex items-center gap-2 mb-2">
           <Clock size={16} className="text-indigo-400" />
           <span className="text-gray-300 font-medium">Cycle Information</span>
@@ -65,7 +65,7 @@ const BotStatus: React.FC = () => {
       <div 
         className="log-container overflow-auto" 
         ref={logContainerRef}
-        style={{ maxHeight: '250px' }}
+        style={{ maxHeight: '400px' }}
       >
         {logs.map((log, index) => (
           <div 

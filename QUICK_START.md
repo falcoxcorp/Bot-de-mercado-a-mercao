@@ -36,32 +36,26 @@ Tu bot ahora funciona **24/7 en la nube**. Puedes:
 ```
 1. En "Wallet Manager"
 2. Toggle el switch de tu wallet a ON (verde)
-3. ¡Listo! El bot está activo y funcionando 24/7
+3. ¡Listo! El bot está activo
 ```
 
-### 4. Verificar Auto-Executor (5 segundos)
+### 4. Configurar CRON Job (2 minutos) - IMPORTANTE
 ```
-1. Mira la sección "Auto-Executor Status"
-2. Debe decir "Running" en verde
-3. Verás "Last Execution" y "Total Executions"
-4. El bot se ejecuta automáticamente cada 30 segundos
+1. Ve a https://cron-job.org (crear cuenta gratis)
+2. Click "Create cronjob"
+3. Title: "Falco-X Trading Bot"
+4. URL: https://wltlscihxmnntxmvmypt.supabase.co/functions/v1/trading-bot-executor
+5. Schedule: "Every minute" o "Every 30 seconds"
+6. Click "Create cronjob"
 ```
 
-**¡NO NECESITAS CONFIGURAR CRON EXTERNO!**
-El bot ahora tiene un auto-executor integrado que funciona mientras la app esté abierta en cualquier pestaña del navegador.
-
-### 5. Mantener App Abierta (IMPORTANTE)
+### 5. Cerrar Todo y Verificar
 ```
-⚠️ NUEVO COMPORTAMIENTO:
-El auto-executor funciona mientras la app esté abierta en el navegador.
-
-Para operación 24/7:
-1. Mantén la app abierta en una pestaña del navegador
-2. O despliega en un hosting como Vercel/Netlify
-3. O usa el CRON externo (ver abajo)
-
-Si solo quieres que funcione cuando tengas el navegador abierto:
-✅ ¡Ya está listo! Solo mantén la pestaña abierta
+1. Cierra el navegador
+2. Apaga tu PC si quieres
+3. Espera 5-10 minutos
+4. Abre la app desde cualquier dispositivo
+5. Revisa los logs → Deberías ver operaciones ejecutadas
 ```
 
 ## ¿Cómo Verificar que Funciona?
@@ -119,9 +113,8 @@ Intervals:      5-15 minutos (más realista)
 - La primera operación ocurrirá después del intervalo configurado
 
 ### ¿Necesito mantener la app abierta?
-- **Con Auto-Executor**: Sí, mantén una pestaña abierta
-- **Con CRON Externo**: No, puedes cerrarla completamente
-- Ver sección "Opción: CRON Externo 24/7" abajo
+- **NO** - Puedes cerrarla completamente
+- El bot funciona en la nube de Supabase
 
 ### ¿Cuántas wallets puedo tener?
 - Ilimitadas
@@ -163,22 +156,6 @@ Intervals:      5-15 minutos (más realista)
 2. Verifica que el balance sea mayor al monto configurado
 3. Espera la siguiente ejecución
 
-## Opción: CRON Externo 24/7 (Avanzado)
-
-Si quieres que el bot funcione **sin necesidad de mantener el navegador abierto**, puedes configurar un CRON externo:
-
-### Configurar CRON Job (2 minutos)
-```
-1. Ve a https://cron-job.org (crear cuenta gratis)
-2. Click "Create cronjob"
-3. Title: "Falco-X Trading Bot"
-4. URL: https://wltlscihxmnntxmvmypt.supabase.co/functions/v1/trading-bot-executor
-5. Schedule: "Every minute" o "Every 30 seconds"
-6. Click "Create cronjob"
-```
-
-Con esto, el bot funcionará 24/7 **sin necesidad de mantener el navegador abierto**.
-
 ## Próximos Pasos
 
 Después de verificar que funciona:
@@ -187,7 +164,6 @@ Después de verificar que funciona:
 2. **Agrega más wallets** para diversificar
 3. **Monitorea regularmente** los primeros días
 4. **Exporta wallets** como backup (botón en Wallet Manager)
-5. **Opcional**: Configura CRON externo para verdadero 24/7
 
 ## Contacto y Soporte
 

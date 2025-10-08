@@ -161,8 +161,7 @@ export const walletService = {
       amountVariability: Number(data.amount_variability),
       timeVariability: Number(data.time_variability),
       baseSuccessProb: Number(data.base_success_prob),
-      marketBias: Number(data.market_bias),
-      lastOperationTime: data.last_operation_time
+      marketBias: Number(data.market_bias)
     };
   },
 

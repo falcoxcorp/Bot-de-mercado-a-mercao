@@ -1,9 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useWeb3 } from './Web3Context';
-import { botExecutor } from '../services/botExecutor';
-import { useAuth } from './AuthContext';
-import { walletService } from '../services/walletService';
 
 interface BotContextType {
   isTrading: boolean;
@@ -93,8 +90,7 @@ export const BotContext = createContext<BotContextType>({
 
 export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { web3, initializeWeb3 } = useWeb3();
-  const { user } = useAuth();
-
+  
   const [isTrading, setIsTrading] = useState(false);
   const [botStats, setBotStats] = useState({
     totalSwaps: 0,
@@ -114,121 +110,6 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     loadParameters();
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      console.log('[BotContext] User logged in, starting auto-executor once...');
-      addLog('Auto-executor started - Bot will run automatically for active wallets', 'success');
-      botExecutor.start();
-      updateCycleInfo();
-
-      return () => {
-        console.log('[BotContext] User logged out, stopping auto-executor...');
-        botExecutor.stop();
-      };
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (user) {
-      const interval = setInterval(() => {
-        updateCycleInfo();
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
-  }, [user?.id]);
-
-  const formatTimeRemaining = (seconds: number): string => {
-    if (seconds <= 0) return 'Ready now';
-
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  };
-
-  const updateCycleInfo = async () => {
-    if (!user) {
-      setCurrentCycle('Not logged in');
-      setNextCycle('Not logged in');
-      return;
-    }
-
-    try {
-      const wallets = await walletService.loadUserWallets(user.id);
-      const activeWallets = wallets.filter(w => w.active);
-
-      if (activeWallets.length === 0) {
-        setCurrentCycle('No active wallets');
-        setNextCycle('Activate a wallet to start trading');
-        return;
-      }
-
-      let totalBuys = 0;
-      let totalSells = 0;
-      let totalOperations = 0;
-      let nextOperationInfo = '';
-      let closestTimeRemaining = Infinity;
-
-      for (const wallet of activeWallets) {
-        const walletId = await walletService.getWalletIdByAddress(user.id, wallet.address);
-        if (walletId) {
-          const strategy = await walletService.loadWalletStrategy(walletId);
-          const config = await walletService.loadWalletConfig(walletId);
-
-          if (strategy && config) {
-            totalBuys += strategy.currentCycle.remainingBuys;
-            totalSells += strategy.currentCycle.remainingSells;
-            totalOperations += strategy.currentCycle.operationsLeft;
-
-            const nextOp = strategy.currentCycle.operations[0];
-            const isBuy = nextOp === 'buy';
-
-            const intervalSeconds = isBuy
-              ? config.buyIntervalHours * 3600 + config.buyIntervalMinutes * 60 + config.buyIntervalSeconds
-              : config.sellIntervalHours * 3600 + config.sellIntervalMinutes * 60 + config.sellIntervalSeconds;
-
-            if (strategy.currentCycle.operationsLeft > 0) {
-              const lastOpTime = strategy.lastOperationTime
-                ? new Date(strategy.lastOperationTime).getTime()
-                : 0;
-
-              const now = Date.now();
-              const timeSinceLastOp = Math.floor((now - lastOpTime) / 1000);
-              const timeRemaining = Math.max(0, intervalSeconds - timeSinceLastOp);
-
-              if (timeRemaining < closestTimeRemaining) {
-                closestTimeRemaining = timeRemaining;
-                const shortAddr = wallet.address.substring(0, 8);
-                nextOperationInfo = `Next: ${shortAddr}... will ${isBuy ? 'BUY' : 'SELL'} in ${formatTimeRemaining(timeRemaining)}`;
-              }
-            }
-          }
-        }
-      }
-
-      const activeCount = activeWallets.length;
-      setCurrentCycle(`${activeCount} active wallet${activeCount > 1 ? 's' : ''} - Running...`);
-
-      if (nextOperationInfo) {
-        setNextCycle(`${nextOperationInfo} | Total: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops)`);
-      } else {
-        setNextCycle(`Total: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops)`);
-      }
-    } catch (error) {
-      console.error('[BotContext] Error updating cycle info:', error);
-      setCurrentCycle('Error loading wallet info');
-      setNextCycle('Check console for details');
-    }
-  };
-
   const addLog = (message: string, type: string = 'info') => {
     setLogs(prevLogs => {
       const newLogs = [
@@ -239,7 +120,8 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
         },
         ...prevLogs
       ];
-
+      
+      // Keep only the last 100 logs
       if (newLogs.length > 100) {
         return newLogs.slice(0, 100);
       }
@@ -276,17 +158,44 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
       setIsTrading(true);
       addLog(`Starting trading for wallet ${botCredentials.walletAddress}`, 'info');
       toast.success('Bot started successfully');
-      updateCycleInfo();
-
+      
+      // Simulate cycle updates
+      simulateCycles();
+      
     } catch (error: any) {
       addLog(`Failed to initialize bot: ${error.message}`, 'error');
       toast.error('Failed to start bot');
     }
   };
 
+  const simulateCycles = () => {
+    let cycleCount = 1;
+    let operationsLeft = 10;
+    
+    const interval = setInterval(() => {
+      if (!isTrading) {
+        clearInterval(interval);
+        return;
+      }
+      
+      setCurrentCycle(`Operation ${11 - operationsLeft}/10 (${Math.random() > 0.5 ? 'BUY' : 'SELL'})`);
+      setNextCycle(`Remaining: ${Math.floor(operationsLeft/2)} buys, ${Math.ceil(operationsLeft/2)} sells`);
+      
+      operationsLeft--;
+      
+      if (operationsLeft <= 0) {
+        cycleCount++;
+        operationsLeft = 10;
+        addLog(`Starting cycle ${cycleCount}`, 'info');
+      }
+      
+    }, 5000);
+  };
+
   const stopBot = () => {
     setIsTrading(false);
-    updateCycleInfo();
+    setCurrentCycle('Not running');
+    setNextCycle('Not running');
     addLog('Bot stopped');
     toast.info('Bot stopped');
   };
@@ -327,16 +236,15 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
       const storedParameters = localStorage.getItem('tradingParameters');
       if (storedParameters) {
         setTradingParameters(JSON.parse(storedParameters));
-        console.log('[BotContext] Trading parameters loaded from localStorage');
+        addLog('Trading parameters loaded successfully', 'success');
       }
-
+      
       const storedCredentials = localStorage.getItem('botCredentials');
       if (storedCredentials) {
         setBotCredentials(JSON.parse(storedCredentials));
-        console.log('[BotContext] Bot credentials loaded from localStorage');
       }
     } catch (error) {
-      console.error('[BotContext] Error loading parameters:', error);
+      console.error('Error loading parameters:', error);
       addLog('Failed to load parameters', 'error');
     }
   };

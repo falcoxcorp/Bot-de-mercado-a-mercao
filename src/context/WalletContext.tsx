@@ -2,10 +2,8 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { toast } from 'react-toastify';
 import { useWeb3 } from './Web3Context';
 import { useBot } from './BotContext';
-import { useAuth } from './AuthContext';
 import { ERC20_ABI } from '../constants/abis';
 import Web3 from 'web3';
-import { walletService } from '../services/walletService';
 
 interface WalletMetrics {
   totalBuys: number;
@@ -119,56 +117,17 @@ export const WalletContext = createContext<WalletContextType>({
 export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { web3, initializeWeb3, getWalletBalances, executeBuyTrade, executeSellTrade } = useWeb3();
   const { addLog } = useBot();
-  const { user } = useAuth();
-
+  
   const [wallets, setWallets] = useState<Map<string, Wallet>>(new Map());
   const [walletStrategies, setWalletStrategies] = useState<Map<string, WalletStrategy>>(new Map());
   const [walletConfigs, setWalletConfigs] = useState<Map<string, WalletConfig>>(new Map());
   const [lastOperationTime] = useState<Map<string, number>>(new Map());
-  const [isLoadingWallets, setIsLoadingWallets] = useState(false);
-  const [hasLoadedFromSupabase, setHasLoadedFromSupabase] = useState(false);
 
+  // Load saved wallets on component mount
   useEffect(() => {
-    if (user && !hasLoadedFromSupabase) {
-      console.log('[WalletContext] User logged in, loading wallets from Supabase once...');
-      loadWalletsFromSupabase();
-    } else if (!user && hasLoadedFromSupabase) {
-      console.log('[WalletContext] User logged out, resetting state...');
-      setHasLoadedFromSupabase(false);
-      setWallets(new Map());
-      setWalletStrategies(new Map());
-      setWalletConfigs(new Map());
-    }
-  }, [user, hasLoadedFromSupabase]);
-
-  // Update balances periodically
-  useEffect(() => {
-    if (wallets.size === 0) return;
-
-    console.log('[WalletContext] Starting balance update interval for', wallets.size, 'wallet(s)');
-
-    // Update immediately
-    const updateAllBalances = async () => {
-      try {
-        const allWallets = Array.from(wallets.values());
-        for (const wallet of allWallets) {
-          await updateWalletBalances(wallet.address);
-        }
-      } catch (error) {
-        console.error('[WalletContext] Error updating balances:', error);
-      }
-    };
-
-    updateAllBalances();
-
-    // Then update every 30 seconds
-    const interval = setInterval(updateAllBalances, 30000);
-
-    return () => {
-      console.log('[WalletContext] Cleaning up balance update interval');
-      clearInterval(interval);
-    };
-  }, [wallets.size]);
+    loadWalletsFromLocalStorage();
+    startBalanceUpdateInterval();
+  }, []);
 
   // Save wallets whenever they change
   useEffect(() => {
@@ -176,6 +135,21 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       saveWalletsToLocalStorage();
     }
   }, [wallets]);
+
+  const startBalanceUpdateInterval = () => {
+    const interval = setInterval(async () => {
+      try {
+        const activeWallets = Array.from(wallets.values()).filter(w => w.active);
+        for (const wallet of activeWallets) {
+          await updateWalletBalances(wallet.address);
+        }
+      } catch (error) {
+        console.error('Error in balance update interval:', error);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  };
 
   const executeWalletTrading = async (address: string) => {
     const wallet = wallets.get(address);
@@ -326,44 +300,27 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   };
 
-  const addWallet = async (wallet: Wallet) => {
+  const addWallet = (wallet: Wallet) => {
     setWallets(prev => {
       const newWallets = new Map(prev);
       newWallets.set(wallet.address, wallet);
       return newWallets;
     });
-
-    const newStrategy = generateStrategyWeights();
+    
     setWalletStrategies(prev => {
       const newStrategies = new Map(prev);
-      newStrategies.set(wallet.address, newStrategy);
+      newStrategies.set(wallet.address, generateStrategyWeights());
       return newStrategies;
     });
-
+    
     if (!walletConfigs.has(wallet.address)) {
       setWalletConfigs(prev => {
         const newConfigs = new Map(prev);
-        newConfigs.set(wallet.address, getDefaultWalletConfig());
+        newConfigs.set(wallet.address, getDefaultConfig());
         return newConfigs;
       });
     }
-
-    if (user) {
-      try {
-        await walletService.saveWallet(user.id, wallet);
-        const walletId = await walletService.getWalletIdByAddress(user.id, wallet.address);
-
-        if (walletId) {
-          await walletService.saveWalletStrategy(user.id, walletId, newStrategy);
-          await walletService.saveWalletConfig(user.id, walletId, getDefaultWalletConfig());
-        }
-
-        console.log('[WalletContext] Wallet saved to Supabase:', wallet.address);
-      } catch (error) {
-        console.error('[WalletContext] Error saving wallet to Supabase:', error);
-      }
-    }
-
+    
     saveWalletsToLocalStorage();
   };
 
@@ -397,43 +354,32 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     addLog(`Removed wallet ${address.substr(0, 8)}...`, 'success');
   };
 
-  const toggleWalletTrading = async (address: string) => {
-    let newActiveState = false;
-
+  const toggleWalletTrading = (address: string) => {
     setWallets(prev => {
       const newWallets = new Map(prev);
       const wallet = newWallets.get(address);
-
+      
       if (wallet) {
         wallet.active = !wallet.active;
-        newActiveState = wallet.active;
         newWallets.set(address, wallet);
-
+        
         if (wallet.active) {
           setWalletStrategies(prev => {
             const newStrategies = new Map(prev);
             newStrategies.set(address, generateStrategyWeights());
             return newStrategies;
           });
-
-          addLog(`Wallet ${address.substring(0, 8)}... trading enabled`, 'info');
+          
+          addLog(`Wallet ${address.substr(0, 8)}... trading enabled`, 'info');
+          executeWalletTrading(address);
         } else {
-          addLog(`Wallet ${address.substring(0, 8)}... trading disabled`, 'info');
+          addLog(`Wallet ${address.substr(0, 8)}... trading disabled`, 'info');
         }
       }
-
+      
       return newWallets;
     });
-
-    if (user) {
-      try {
-        await walletService.toggleWalletActive(user.id, address, newActiveState);
-        console.log('[WalletContext] Wallet active state saved to Supabase:', newActiveState);
-      } catch (error) {
-        console.error('[WalletContext] Error saving wallet active state:', error);
-      }
-    }
-
+    
     saveWalletsToLocalStorage();
   };
 
@@ -537,34 +483,19 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
   const updateWalletBalances = async (address: string) => {
     try {
       const wallet = wallets.get(address);
-      if (!wallet) {
-        console.log(`[WalletContext] Wallet ${address} not found in map`);
-        return;
-      }
-
-      // Ensure web3 is initialized
-      if (!web3) {
-        console.log('[WalletContext] Web3 not initialized, initializing now...');
-        await initializeWeb3();
-      }
-
-      console.log(`[WalletContext] Fetching balances for ${address.substring(0, 8)}...`);
+      if (!wallet) return;
+      
       const balances = await getWalletBalances(address);
-
-      console.log(`[WalletContext] Balances fetched for ${address.substring(0, 8)}:`, {
-        native: balances.native,
-        tokens: balances.tokens.length
-      });
-
+      
       setWallets(prev => {
         const newWallets = new Map(prev);
         const updatedWallet = newWallets.get(address);
-
+        
         if (updatedWallet) {
           updatedWallet.balances = balances;
           newWallets.set(address, updatedWallet);
         }
-
+        
         return newWallets;
       });
 
@@ -581,7 +512,7 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
         localStorage.setItem('savedWallets', JSON.stringify(updatedWallets));
       }
     } catch (error) {
-      console.error(`[WalletContext] Error updating balances for wallet ${address}:`, error);
+      console.error(`Error updating balances for wallet ${address}:`, error);
     }
   };
 
@@ -657,34 +588,15 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     return config;
   };
 
-  const saveWalletConfig = async (address: string, config: WalletConfig) => {
-    try {
-      console.log('[WalletContext] Saving config for', address, config);
-
-      setWalletConfigs(prev => {
-        const newConfigs = new Map(prev);
-        newConfigs.set(address, config);
-        return newConfigs;
-      });
-
-      if (user) {
-        const walletId = await walletService.getWalletIdByAddress(user.id, address);
-
-        if (walletId) {
-          await walletService.saveWalletConfig(user.id, walletId, config);
-          console.log('[WalletContext] Config saved to Supabase');
-          addLog(`Configuration saved for wallet ${address.substring(0, 8)}...`, 'success');
-        } else {
-          console.warn('[WalletContext] Wallet ID not found for address:', address);
-          addLog(`Warning: Could not find wallet ID for ${address.substring(0, 8)}...`, 'warning');
-        }
-      }
-
-      saveWalletConfigsToLocalStorage();
-    } catch (error) {
-      console.error('[WalletContext] Error saving wallet config:', error);
-      addLog(`Error saving configuration for wallet ${address.substring(0, 8)}...`, 'error');
-    }
+  const saveWalletConfig = (address: string, config: WalletConfig) => {
+    setWalletConfigs(prev => {
+      const newConfigs = new Map(prev);
+      newConfigs.set(address, config);
+      return newConfigs;
+    });
+    
+    saveWalletConfigsToLocalStorage();
+    addLog(`Configuration saved for wallet ${address.substr(0, 8)}...`, 'success');
   };
 
   const exportWallets = () => {
@@ -739,95 +651,13 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
     }
   };
 
-  const getDefaultWalletConfig = (): WalletConfig => {
-    return {
-      minBuyAmount: 0.01,
-      maxBuyAmount: 0.1,
-      buySlippage: 1,
-      buyIntervalHours: 0,
-      buyIntervalMinutes: 1,
-      buyIntervalSeconds: 0,
-      minSellAmount: 0.01,
-      maxSellAmount: 0.1,
-      sellSlippage: 1,
-      sellIntervalHours: 0,
-      sellIntervalMinutes: 1,
-      sellIntervalSeconds: 0,
-      selectedToken: '',
-      selectedNetwork: 'core',
-      selectedDex: ''
-    };
-  };
-
-  const loadWalletsFromSupabase = async () => {
-    if (!user) return;
-
-    try {
-      setIsLoadingWallets(true);
-      console.log('[WalletContext] Loading wallets from Supabase...');
-
-      const walletsData = await walletService.loadUserWallets(user.id);
-      console.log('[WalletContext] Loaded wallets:', walletsData.length);
-
-      const newWallets = new Map<string, Wallet>();
-      const newStrategies = new Map<string, WalletStrategy>();
-      const newConfigs = new Map<string, WalletConfig>();
-
-      for (const walletData of walletsData) {
-        newWallets.set(walletData.address, {
-          address: walletData.address,
-          privateKey: walletData.privateKey,
-          name: walletData.name,
-          metrics: walletData.metrics,
-          active: walletData.active,
-          showPrivateKey: false,
-          isImported: walletData.isImported
-        });
-
-        const walletId = await walletService.getWalletIdByAddress(user.id, walletData.address);
-
-        if (walletId) {
-          const strategy = await walletService.loadWalletStrategy(walletId);
-          if (strategy) {
-            newStrategies.set(walletData.address, strategy);
-          } else {
-            newStrategies.set(walletData.address, generateStrategyWeights());
-          }
-
-          const config = await walletService.loadWalletConfig(walletId);
-          if (config) {
-            newConfigs.set(walletData.address, config);
-            console.log('[WalletContext] Loaded config for', walletData.address, config);
-          } else {
-            const defaultConfig = getDefaultWalletConfig();
-            newConfigs.set(walletData.address, defaultConfig);
-          }
-        }
-      }
-
-      setWallets(newWallets);
-      setWalletStrategies(newStrategies);
-      setWalletConfigs(newConfigs);
-      setHasLoadedFromSupabase(true);
-
-      addLog(`Loaded ${walletsData.length} wallet(s) from cloud`, 'success');
-      console.log('[WalletContext] Loaded configs:', newConfigs.size);
-      console.log('[WalletContext] Wallets loaded successfully. Will not reload unless user logs out.');
-    } catch (error) {
-      console.error('[WalletContext] Error loading wallets from Supabase:', error);
-      addLog('Error loading wallets from cloud', 'error');
-    } finally {
-      setIsLoadingWallets(false);
-    }
-  };
-
   const saveWalletConfigsToLocalStorage = () => {
     try {
       const configsData: Record<string, WalletConfig> = {};
       walletConfigs.forEach((value, key) => {
         configsData[key] = value;
       });
-
+      
       localStorage.setItem('walletConfigs', JSON.stringify(configsData));
     } catch (error) {
       console.error('Error saving wallet configs:', error);

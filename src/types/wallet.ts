@@ -39,7 +39,6 @@ export interface WalletStrategy {
   timeVariability: number;
   baseSuccessProb: number;
   marketBias: number;
-  lastOperationTime?: string | null;
 }
 
 export interface WalletConfig {

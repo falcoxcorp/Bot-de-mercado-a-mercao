@@ -13,7 +13,7 @@ const SellingParameters: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.5 }}
     >
-      <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
         <ArrowDownRight size={20} className="text-red-400" />
         Selling Parameters
       </h2>

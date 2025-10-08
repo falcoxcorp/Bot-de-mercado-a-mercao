@@ -17,7 +17,6 @@ import WithdrawModal from './components/modals/WithdrawModal';
 import WalletConfigModal from './components/modals/WalletConfigModal';
 import TermsModal from './components/modals/TermsModal';
 import AIAssistant from './components/AIAssistant';
-import { AutoExecutorStatus } from './components/AutoExecutorStatus';
 
 import { Web3Provider } from './context/Web3Context';
 import { BotProvider } from './context/BotContext';
@@ -71,29 +70,25 @@ const MainApp = () => {
         <WalletProvider>
           <ModalProvider>
             <div className="min-h-screen relative">
-              <div className="container mx-auto px-4 py-6 max-w-6xl relative z-10">
+              <div className="container mx-auto px-4 py-8 max-w-6xl relative z-10">
                 <Header />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <BotConfiguration />
                   <TokenPairManager />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <NetworkSelector />
                   <DexSelector />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <BuyingParameters />
                   <SellingParameters />
                 </div>
 
                 <BotStatus />
-
-                <div className="mb-4">
-                  <AutoExecutorStatus />
-                </div>
 
                 <WalletManager />
 
