@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, Eye, EyeOff, Upload, Download, Play, Square, Clock } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
@@ -41,7 +41,7 @@ const WalletManager: React.FC = () => {
     }
   };
 
-  const updateWalletCountdowns = async () => {
+  const updateWalletCountdowns = useCallback(async () => {
     if (!user) return;
 
     const newCountdowns = new Map<string, WalletCountdown>();
@@ -84,7 +84,7 @@ const WalletManager: React.FC = () => {
     }
 
     setWalletCountdowns(newCountdowns);
-  };
+  }, [user, wallets]);
 
   useEffect(() => {
     if (user && wallets.size > 0) {
@@ -96,7 +96,7 @@ const WalletManager: React.FC = () => {
 
       return () => clearInterval(interval);
     }
-  }, [user, wallets]);
+  }, [user, wallets, updateWalletCountdowns]);
 
   const handleImport = async () => {
     try {
