@@ -51,18 +51,21 @@ const WalletManager: React.FC = () => {
 
       try {
         const walletId = await walletService.getWalletIdByAddress(user.id, address);
-        if (!walletId) continue;
+        if (!walletId) {
+          console.log(`[WalletManager] No wallet ID found for ${address}`);
+          continue;
+        }
 
         const strategy = await walletService.loadWalletStrategy(walletId);
         const config = await walletService.loadWalletConfig(walletId);
 
         if (strategy && config) {
-          const nextOp = strategy.currentCycle.operations[0];
+          const nextOp = strategy.currentCycle?.operations?.[0] || 'buy';
           const isBuy = nextOp === 'buy';
 
           const intervalSeconds = isBuy
-            ? config.buyIntervalHours * 3600 + config.buyIntervalMinutes * 60 + config.buyIntervalSeconds
-            : config.sellIntervalHours * 3600 + config.sellIntervalMinutes * 60 + config.sellIntervalSeconds;
+            ? (config.buyIntervalHours || 0) * 3600 + (config.buyIntervalMinutes || 0) * 60 + (config.buyIntervalSeconds || 0)
+            : (config.sellIntervalHours || 0) * 3600 + (config.sellIntervalMinutes || 0) * 60 + (config.sellIntervalSeconds || 0);
 
           const lastOpTime = strategy.lastOperationTime
             ? new Date(strategy.lastOperationTime).getTime()
@@ -72,11 +75,22 @@ const WalletManager: React.FC = () => {
           const timeSinceLastOp = Math.floor((now - lastOpTime) / 1000);
           const timeRemaining = Math.max(0, intervalSeconds - timeSinceLastOp);
 
+          const timeRemainingStr = formatTimeRemaining(timeRemaining);
+
           newCountdowns.set(address, {
             nextOperation: isBuy ? 'BUY' : 'SELL',
-            timeRemaining: formatTimeRemaining(timeRemaining),
-            operationsInfo: `${strategy.currentCycle.remainingBuys} buys, ${strategy.currentCycle.remainingSells} sells (${strategy.currentCycle.operationsLeft} ops left)`
+            timeRemaining: timeRemainingStr,
+            operationsInfo: `${strategy.currentCycle?.remainingBuys || 0} buys, ${strategy.currentCycle?.remainingSells || 0} sells (${strategy.currentCycle?.operationsLeft || 0} ops left)`
           });
+
+          console.log(`[WalletManager] Countdown for ${address}:`, {
+            nextOp: isBuy ? 'BUY' : 'SELL',
+            timeRemaining: timeRemainingStr,
+            intervalSeconds,
+            timeSinceLastOp
+          });
+        } else {
+          console.log(`[WalletManager] No strategy or config for ${address}`);
         }
       } catch (error) {
         console.error(`[WalletManager] Error updating countdown for ${address}:`, error);
@@ -290,8 +304,8 @@ const WalletManager: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between bg-slate-800 rounded p-2">
                           <span className="text-gray-400">Time Remaining:</span>
-                          <span className="font-mono text-white font-semibold">
-                            {walletCountdowns.get(wallet.address)?.timeRemaining}
+                          <span className="font-mono text-white font-semibold text-right">
+                            {walletCountdowns.get(wallet.address)?.timeRemaining || 'Ready now'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between bg-slate-800 rounded p-2">
