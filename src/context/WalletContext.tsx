@@ -126,12 +126,20 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
   const [walletConfigs, setWalletConfigs] = useState<Map<string, WalletConfig>>(new Map());
   const [lastOperationTime] = useState<Map<string, number>>(new Map());
   const [isLoadingWallets, setIsLoadingWallets] = useState(false);
+  const [hasLoadedFromSupabase, setHasLoadedFromSupabase] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && !hasLoadedFromSupabase) {
+      console.log('[WalletContext] User logged in, loading wallets from Supabase once...');
       loadWalletsFromSupabase();
+    } else if (!user && hasLoadedFromSupabase) {
+      console.log('[WalletContext] User logged out, resetting state...');
+      setHasLoadedFromSupabase(false);
+      setWallets(new Map());
+      setWalletStrategies(new Map());
+      setWalletConfigs(new Map());
     }
-  }, [user]);
+  }, [user, hasLoadedFromSupabase]);
 
   // Update balances periodically
   useEffect(() => {
@@ -800,9 +808,11 @@ export const WalletProvider: React.FC<{children: React.ReactNode}> = ({ children
       setWallets(newWallets);
       setWalletStrategies(newStrategies);
       setWalletConfigs(newConfigs);
+      setHasLoadedFromSupabase(true);
 
       addLog(`Loaded ${walletsData.length} wallet(s) from cloud`, 'success');
       console.log('[WalletContext] Loaded configs:', newConfigs.size);
+      console.log('[WalletContext] Wallets loaded successfully. Will not reload unless user logs out.');
     } catch (error) {
       console.error('[WalletContext] Error loading wallets from Supabase:', error);
       addLog('Error loading wallets from cloud', 'error');

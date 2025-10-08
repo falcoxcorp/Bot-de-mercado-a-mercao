@@ -116,15 +116,17 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
 
   useEffect(() => {
     if (user) {
+      console.log('[BotContext] User logged in, starting auto-executor once...');
       addLog('Auto-executor started - Bot will run automatically for active wallets', 'success');
       botExecutor.start();
       updateCycleInfo();
 
       return () => {
+        console.log('[BotContext] User logged out, stopping auto-executor...');
         botExecutor.stop();
       };
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) {
@@ -134,7 +136,7 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
 
       return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user?.id]);
 
   const formatTimeRemaining = (seconds: number): string => {
     if (seconds <= 0) return 'Ready now';
@@ -325,15 +327,16 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
       const storedParameters = localStorage.getItem('tradingParameters');
       if (storedParameters) {
         setTradingParameters(JSON.parse(storedParameters));
-        addLog('Trading parameters loaded successfully', 'success');
+        console.log('[BotContext] Trading parameters loaded from localStorage');
       }
-      
+
       const storedCredentials = localStorage.getItem('botCredentials');
       if (storedCredentials) {
         setBotCredentials(JSON.parse(storedCredentials));
+        console.log('[BotContext] Bot credentials loaded from localStorage');
       }
     } catch (error) {
-      console.error('Error loading parameters:', error);
+      console.error('[BotContext] Error loading parameters:', error);
       addLog('Failed to load parameters', 'error');
     }
   };
