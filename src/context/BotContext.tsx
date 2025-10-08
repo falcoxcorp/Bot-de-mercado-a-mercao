@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { useWeb3 } from './Web3Context';
 import { botExecutor } from '../services/botExecutor';
 import { useAuth } from './AuthContext';
+import { walletService } from '../services/walletService';
 
 interface BotContextType {
   isTrading: boolean;
@@ -117,12 +118,66 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     if (user) {
       addLog('Auto-executor started - Bot will run automatically for active wallets', 'success');
       botExecutor.start();
+      updateCycleInfo();
 
       return () => {
         botExecutor.stop();
       };
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      const interval = setInterval(() => {
+        updateCycleInfo();
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const updateCycleInfo = async () => {
+    if (!user) {
+      setCurrentCycle('Not logged in');
+      setNextCycle('Not logged in');
+      return;
+    }
+
+    try {
+      const wallets = await walletService.loadUserWallets(user.id);
+      const activeWallets = wallets.filter(w => w.active);
+
+      if (activeWallets.length === 0) {
+        setCurrentCycle('No active wallets');
+        setNextCycle('Activate a wallet to start trading');
+        return;
+      }
+
+      let totalBuys = 0;
+      let totalSells = 0;
+      let totalOperations = 0;
+
+      for (const wallet of activeWallets) {
+        const walletId = await walletService.getWalletIdByAddress(user.id, wallet.address);
+        if (walletId) {
+          const strategy = await walletService.loadWalletStrategy(walletId);
+          if (strategy) {
+            totalBuys += strategy.currentCycle.remainingBuys;
+            totalSells += strategy.currentCycle.remainingSells;
+            totalOperations += strategy.currentCycle.operationsLeft;
+          }
+        }
+      }
+
+      const activeCount = activeWallets.length;
+      setCurrentCycle(`${activeCount} active wallet${activeCount > 1 ? 's' : ''} - Running...`);
+      setNextCycle(`Remaining: ${totalBuys} buys, ${totalSells} sells (${totalOperations} ops total)`);
+    } catch (error) {
+      console.error('[BotContext] Error updating cycle info:', error);
+      setCurrentCycle('Error loading wallet info');
+      setNextCycle('Check console for details');
+    }
+  };
 
   const addLog = (message: string, type: string = 'info') => {
     setLogs(prevLogs => {
@@ -134,8 +189,7 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
         },
         ...prevLogs
       ];
-      
-      // Keep only the last 100 logs
+
       if (newLogs.length > 100) {
         return newLogs.slice(0, 100);
       }
@@ -172,44 +226,17 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
       setIsTrading(true);
       addLog(`Starting trading for wallet ${botCredentials.walletAddress}`, 'info');
       toast.success('Bot started successfully');
-      
-      // Simulate cycle updates
-      simulateCycles();
-      
+      updateCycleInfo();
+
     } catch (error: any) {
       addLog(`Failed to initialize bot: ${error.message}`, 'error');
       toast.error('Failed to start bot');
     }
   };
 
-  const simulateCycles = () => {
-    let cycleCount = 1;
-    let operationsLeft = 10;
-    
-    const interval = setInterval(() => {
-      if (!isTrading) {
-        clearInterval(interval);
-        return;
-      }
-      
-      setCurrentCycle(`Operation ${11 - operationsLeft}/10 (${Math.random() > 0.5 ? 'BUY' : 'SELL'})`);
-      setNextCycle(`Remaining: ${Math.floor(operationsLeft/2)} buys, ${Math.ceil(operationsLeft/2)} sells`);
-      
-      operationsLeft--;
-      
-      if (operationsLeft <= 0) {
-        cycleCount++;
-        operationsLeft = 10;
-        addLog(`Starting cycle ${cycleCount}`, 'info');
-      }
-      
-    }, 5000);
-  };
-
   const stopBot = () => {
     setIsTrading(false);
-    setCurrentCycle('Not running');
-    setNextCycle('Not running');
+    updateCycleInfo();
     addLog('Bot stopped');
     toast.info('Bot stopped');
   };
