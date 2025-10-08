@@ -126,22 +126,22 @@ const WalletManager: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.7 }}
     >
-      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+      <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
         <Wallet size={20} className="text-indigo-400" />
         Manual Wallet Management
       </h2>
       
       <div className="form-group">
         <label className="form-label">Import Wallet</label>
-        <textarea 
-          className="form-input min-h-[100px]"
+        <textarea
+          className="form-input min-h-[80px]"
           value={importInput}
           onChange={(e) => setImportInput(e.target.value)}
           placeholder="Enter wallet private key or address..."
         ></textarea>
       </div>
-      
-      <div className="flex gap-3 mb-6">
+
+      <div className="flex gap-3 mb-4">
         <motion.button 
           className="btn btn-primary flex-1"
           whileHover={{ scale: 1.03 }}
@@ -165,8 +165,8 @@ const WalletManager: React.FC = () => {
       
       <div className="wallet-list">
         <h3 className="text-lg font-semibold mb-3 text-gray-200">Imported Wallets</h3>
-        
-        <div className="max-h-[400px] overflow-y-auto pr-2">
+
+        <div className="max-h-[600px] overflow-y-auto pr-2">
           {Array.from(wallets.values()).map((wallet) => (
             <div key={wallet.address} className="wallet-card">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
