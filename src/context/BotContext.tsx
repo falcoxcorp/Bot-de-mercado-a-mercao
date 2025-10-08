@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useWeb3 } from './Web3Context';
+import { useAuth } from './AuthContext';
+import { walletService } from '../services/walletService';
 
 interface BotContextType {
   isTrading: boolean;
@@ -90,6 +92,7 @@ export const BotContext = createContext<BotContextType>({
 
 export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { web3, initializeWeb3 } = useWeb3();
+  const { user } = useAuth();
   
   const [isTrading, setIsTrading] = useState(false);
   const [botStats, setBotStats] = useState({
@@ -200,16 +203,21 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     toast.info('Bot stopped');
   };
 
-  const saveCredentials = () => {
+  const saveCredentials = async () => {
     if (!botCredentials.privateKey || !botCredentials.walletAddress) {
       toast.error('Please enter both private key and wallet address');
       addLog('Please enter both private key and wallet address', 'error');
       return;
     }
-    
-    localStorage.setItem('botCredentials', JSON.stringify(botCredentials));
-    toast.success('Credentials saved successfully');
-    addLog('Credentials saved successfully', 'success');
+
+    if (!user) {
+      toast.error('Please login first');
+      addLog('Please login first', 'error');
+      return;
+    }
+
+    toast.info('Use the Wallet Manager to import wallets with private keys');
+    addLog('Use the Wallet Manager to import wallets with private keys', 'info');
   };
 
   const updateTradingParameter = (param: string, value: any) => {
@@ -219,15 +227,55 @@ export const BotProvider: React.FC<{children: React.ReactNode}> = ({ children })
     }));
   };
 
-  const saveParameters = () => {
+  const saveParameters = async () => {
+    if (!user) {
+      toast.error('Please login first');
+      addLog('Please login first', 'error');
+      return;
+    }
+
     try {
-      localStorage.setItem('tradingParameters', JSON.stringify(tradingParameters));
-      toast.success('Trading parameters saved successfully');
-      addLog('Trading parameters saved successfully', 'success');
-    } catch (error) {
+      const { data: activeWallets, error } = await walletService.supabase
+        .from('wallets')
+        .select('id, address')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      if (!activeWallets || activeWallets.length === 0) {
+        toast.warning('No wallets found. Import or generate a wallet first.');
+        addLog('No wallets found to save parameters', 'warning');
+        return;
+      }
+
+      let savedCount = 0;
+      for (const wallet of activeWallets) {
+        await walletService.saveWalletConfig(user.id, wallet.id, {
+          minBuyAmount: tradingParameters.minBuyAmount,
+          maxBuyAmount: tradingParameters.maxBuyAmount,
+          buySlippage: tradingParameters.buySlippage,
+          buyIntervalHours: tradingParameters.buyIntervalHours,
+          buyIntervalMinutes: tradingParameters.buyIntervalMinutes,
+          buyIntervalSeconds: tradingParameters.buyIntervalSeconds,
+          minSellAmount: tradingParameters.minSellAmount,
+          maxSellAmount: tradingParameters.maxSellAmount,
+          sellSlippage: tradingParameters.sellSlippage,
+          sellIntervalHours: tradingParameters.sellIntervalHours,
+          sellIntervalMinutes: tradingParameters.sellIntervalMinutes,
+          sellIntervalSeconds: tradingParameters.sellIntervalSeconds,
+          selectedToken: tradingParameters.selectedToken,
+          selectedNetwork: 'core',
+          selectedDex: ''
+        });
+        savedCount++;
+      }
+
+      toast.success(`Trading parameters saved for ${savedCount} wallet(s)`);
+      addLog(`Trading parameters saved for ${savedCount} wallet(s)`, 'success');
+    } catch (error: any) {
       console.error('Error saving parameters:', error);
       toast.error('Failed to save parameters');
-      addLog('Failed to save parameters', 'error');
+      addLog('Failed to save parameters: ' + error.message, 'error');
     }
   };
 

@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { Wallet, WalletConfig, WalletStrategy } from '../types/wallet';
 
 export const walletService = {
+  supabase,
   async loadUserWallets(userId: string): Promise<Wallet[]> {
     const { data, error } = await supabase
       .from('wallets')
