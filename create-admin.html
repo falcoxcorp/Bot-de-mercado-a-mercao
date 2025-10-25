@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Create Admin User</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 500px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #0a0f1e;
+      color: #fff;
+    }
+    .card {
+      background: #1a1f35;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    h1 { color: #60a5fa; margin-bottom: 20px; }
+    button {
+      background: linear-gradient(to right, #3b82f6, #06b6d4);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      width: 100%;
+      margin-top: 10px;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+    }
+    .status.success {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+      display: block;
+    }
+    .status.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      display: block;
+    }
+    .info {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 14px;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Create Admin User</h1>
+    <p style="color: #9ca3af; margin-bottom: 20px;">
+      Click the button below to create the admin account
+    </p>
+
+    <button id="createBtn" onclick="createAdmin()">
+      Create Admin Account
+    </button>
+
+    <div id="status" class="status"></div>
+
+    <div class="info">
+      <strong>Admin Credentials:</strong><br>
+      Email: Jennierfs@gmail.com<br>
+      Password: Jfs.hp1989*
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const supabaseUrl = 'https://0ec90b57d6e95fcbda19832f.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJib2x0IiwicmVmIjoiMGVjOTBiNTdkNmU5NWZjYmRhMTk4MzJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg4ODE1NzQsImV4cCI6MTc1ODg4MTU3NH0.9I8-U0x86Ak8t2DGaIk0HfvTSLsAyzdnz-Nw00mMkKw';
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    window.createAdmin = async function() {
+      const btn = document.getElementById('createBtn');
+      const status = document.getElementById('status');
+
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      status.className = 'status';
+      status.style.display = 'none';
+
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: 'Jennierfs@gmail.com',
+          password: 'Jfs.hp1989*',
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        });
+
+        if (error) throw error;
+
+        status.className = 'status success';
+        status.innerHTML = `
+          <strong>Success!</strong><br>
+          Admin account created successfully.<br>
+          User ID: ${data.user.id}<br><br>
+          You can now sign in with:<br>
+          Email: Jennierfs@gmail.com<br>
+          Password: Jfs.hp1989*
+        `;
+
+        btn.textContent = 'Admin Created ✓';
+
+      } catch (error) {
+        status.className = 'status error';
+        status.innerHTML = `
+          <strong>Error:</strong><br>
+          ${error.message}<br><br>
+          ${error.message.includes('already registered') ? 'The admin account already exists. You can sign in directly.' : ''}
+        `;
+
+        btn.disabled = false;
+        btn.textContent = 'Try Again';
+      }
+    };
+  </script>
+</body>
+</html>
