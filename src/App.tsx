@@ -22,12 +22,8 @@ import { Web3Provider } from './context/Web3Context';
 import { BotProvider } from './context/BotContext';
 import { WalletProvider } from './context/WalletContext';
 import { ModalProvider } from './context/ModalContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import AuthPage from './components/AuthPage';
 
-const MainApp = () => {
-  const { user, loading } = useAuth();
-
+const App = () => {
   useEffect(() => {
     const createShootingStar = () => {
       const star = document.createElement('div');
@@ -48,21 +44,6 @@ const MainApp = () => {
 
     createStarInterval();
   }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthPage />;
-  }
 
   return (
     <Web3Provider>
@@ -119,14 +100,6 @@ const MainApp = () => {
         </WalletProvider>
       </BotProvider>
     </Web3Provider>
-  );
-};
-
-const App = () => {
-  return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
   );
 };
 
